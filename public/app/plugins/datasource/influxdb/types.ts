@@ -69,6 +69,7 @@ export interface InfluxQuery extends DataQuery {
   select?: InfluxQueryPart[][];
   limit?: string | number;
   slimit?: string | number;
+  offset?: string | number;
   tz?: string;
   // NOTE: `fill` is not used in the query-editor anymore, and is removed
   // if any change happens in the query-editor. the query-generation still

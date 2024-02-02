@@ -217,6 +217,16 @@ export const VisualInfluxQLEditor = (props: Props): JSX.Element => {
           }}
         />
       </SegmentSection>
+      {/* This is the Thumbtack needed offset section for WOW graphs */}
+      <SegmentSection label="OFFSET" fill={true}>
+        <InputSection
+          placeholder="(optional)"
+          value={query.offset?.toString()}
+          onChange={(offset) => {
+            onAppliedChange({ ...query, offset });
+          }}
+        />
+      </SegmentSection>
       <SegmentSection htmlFor={formatAsId} label="FORMAT AS" fill={true}>
         <FormatAsSection
           inputId={formatAsId}

@@ -139,7 +139,7 @@ export default class InfluxDatasource extends DataSourceWithBackend<InfluxQuery,
       return merge(...streams);
     }
 
-    if (this.version === InfluxVersion.InfluxQL && !this.isMigrationToggleOnAndIsAccessProxy()) {
+    if (this.version === InfluxVersion.InfluxQL) {
       // Fallback to classic query support
       return this.classicQuery(request);
     }
@@ -401,7 +401,7 @@ export default class InfluxDatasource extends DataSourceWithBackend<InfluxQuery,
     }
 
     if (options && options.range) {
-      const timeFilter = this.getTimeFilter({ rangeRaw: options.range, timezone: options.timezone });
+      const timeFilter = this.getTimeFilter({ rangeRaw: options.range.raw, timezone: options.timezone }, 0);
       query = query.replace('$timeFilter', timeFilter);
     }
 
@@ -545,10 +545,14 @@ export default class InfluxDatasource extends DataSourceWithBackend<InfluxQuery,
     return error;
   }
 
-  getTimeFilter(options: { rangeRaw: RawTimeRange; timezone: string }) {
-    const from = this.getInfluxTime(options.rangeRaw.from, false, options.timezone);
-    const until = this.getInfluxTime(options.rangeRaw.to, true, options.timezone);
+  getTimeFilter(options: { rangeRaw: RawTimeRange; timezone: string }, offset: number) {
+    let from = this.getInfluxTime(options.rangeRaw.from, false, options.timezone);
+    let until = this.getInfluxTime(options.rangeRaw.to, true, options.timezone);
 
+    if (offset) {
+      from = '(' + from + ')' + ' - ' + offset + 's';
+      until = '(' + until + ')' + ' - ' + offset + 's';
+    }
     return 'time >= ' + from + ' and time <= ' + until;
   }
 
@@ -586,12 +590,13 @@ export default class InfluxDatasource extends DataSourceWithBackend<InfluxQuery,
    * @deprecated
    */
   classicQuery(options: any): Observable<DataQueryResponse> {
-    let timeFilter = this.getTimeFilter(options);
     const scopedVars = options.scopedVars;
     const targets = cloneDeep(options.targets);
     const queryTargets: any[] = [];
 
-    let i, y;
+    let i, j, k, y;
+
+    let timeFilter = this.getTimeFilter({ rangeRaw: options.range.raw, timezone: options.timezone }, 0);
 
     let allQueries = _map(targets, (target) => {
       if (target.hide) {
@@ -603,7 +608,22 @@ export default class InfluxDatasource extends DataSourceWithBackend<InfluxQuery,
       // backward compatibility
       scopedVars.interval = scopedVars.__interval;
 
-      return new InfluxQueryModel(target, this.templateSrv, scopedVars).render(true);
+      let queryModel = new InfluxQueryModel(target, this.templateSrv, scopedVars);
+      let rendered = queryModel.render(true);
+
+      timeFilter = this.getTimeFilter({ rangeRaw: options.range.raw, timezone: options.timezone }, target.offset);
+
+      // add global adhoc filters to timeFilter
+      let adhocFilters = this.templateSrv.getAdhocFilters(this.name);
+      if (adhocFilters.length > 0) {
+        timeFilter += ' AND ' + queryModel.renderAdhocFilters(adhocFilters);
+      }
+
+      // replace grafana variables
+      scopedVars.timeFilter = { value: timeFilter };
+
+      // replace templated variables
+      return this.templateSrv.replace(rendered, scopedVars);
     }).reduce((acc, current) => {
       if (current !== '') {
         acc += ';' + current;
@@ -640,6 +660,14 @@ export default class InfluxDatasource extends DataSourceWithBackend<InfluxQuery,
           const result = data.results[i];
           if (!result || !result.series) {
             continue;
+          }
+
+          if (queryTargets[i].offset) {
+            for (j = 0; j < data.results[i].series.length; j++) {
+              for (k = 0; k < data.results[i].series[j].values.length; k++) {
+                data.results[i].series[j].values[k][0] += queryTargets[i].offset * 1000;
+              }
+            }
           }
 
           const target = queryTargets[i];
@@ -731,7 +759,7 @@ export default class InfluxDatasource extends DataSourceWithBackend<InfluxQuery,
       );
     }
 
-    const timeFilter = this.getTimeFilter({ rangeRaw: options.range.raw, timezone: options.timezone });
+    const timeFilter = this.getTimeFilter({ rangeRaw: options.range.raw, timezone: options.timezone }, 0);
     let query = annotation.query.replace('$timeFilter', timeFilter);
     query = this.templateSrv.replace(query, undefined, (value: string | string[] = [], variable: QueryVariableModel) =>
       this.interpolateQueryExpr(value, variable, query)

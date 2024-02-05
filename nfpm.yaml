@@ -1,0 +1,43 @@
+name: "grafana"
+arch: "amd64"  # Use "amd64" for x86_64 architecture; adjust if needed.
+platform: "linux"
+version: "${GRAFANA_VERSION}"
+section: "default"
+priority: "extra"
+replaces:
+  - grafana
+provides:
+  - grafana-server
+  - grafana-cli
+depends:
+  - coreutils
+  - passwd  # For useradd (part of shadow-utils on some systems).
+  - systemd
+  - adduser
+maintainer: "<contact@grafana.com>"
+description: |
+  Grafana
+vendor: "Grafana"
+homepage: "https://grafana.com"
+license: "Apache 2"
+
+contents:
+  - src: ./bin/linux-amd64/grafana-server  # Adjust the path accordingly.
+    dst: /usr/sbin/grafana-server
+  - src: ./bin/linux-amd64/grafana-cli  # Adjust the path accordingly.
+    dst: /usr/sbin/grafana-cli
+  - src: ./packaging/deb/init.d/grafana-server
+    dst: /etc/init.d/grafana-server
+  - src: ./packaging/deb/default/grafana-server
+    dst: /etc/default/grafana-server
+  - src: ./packaging/deb/systemd/grafana-server.service
+    dst: /usr/lib/systemd/system/grafana-server.service
+  - src: ./public/
+    dst: /usr/share/grafana/public
+  - src: ./conf/
+    dst: /usr/share/grafana/conf
+  - src: ./bin/linux-amd64/grafana
+    dst: /usr/share/grafana/bin/grafana
+
+scripts:
+  postinstall: ./packaging/deb/control/postinst
